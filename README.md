@@ -2,6 +2,8 @@
 
 基于 golang 开发的通用 请求代理程序, 可以方便的查看 api 请求详情, 在使用 `claude code` 是派生此需求, 所以取名为 `ccproxy`
 
+>! 本项目完全使用 cc 开发完成, readme 是我写的
+
 ## 安装
 
 release 下载 [macos](https://github.com/daodao97/claude-code-proxy/releases) | [windows](https://github.com/daodao97/claude-code-proxy/releases)
