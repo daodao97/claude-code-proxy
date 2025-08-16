@@ -28,6 +28,7 @@ type Config struct {
 		Timeout    int           `yaml:"timeout"`
 		MaxRetries int           `yaml:"max_retries"`
 		RetryDelay int           `yaml:"retry_delay"` // milliseconds
+		HTTPProxy  string        `yaml:"http_proxy"`  // Global HTTP proxy
 	} `yaml:"proxy"`
 
 	Logging struct {
@@ -46,6 +47,7 @@ type ProxyTarget struct {
 	TargetURL string            `yaml:"target_url"`
 	Methods   []string          `yaml:"methods"`
 	Headers   map[string]string `yaml:"headers"`
+	HTTPProxy string            `yaml:"http_proxy"` // Target-specific HTTP proxy
 }
 
 func LoadConfig(filename string) (*Config, error) {

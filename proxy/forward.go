@@ -35,10 +35,23 @@ func (p *ProxyHandler) forwardRequest(w http.ResponseWriter, r *http.Request, ta
 		return fmt.Errorf("build target URL error: %w", err)
 	}
 
+
 	// Cache request body for potential retries
 	bodyBytes, err := p.readAndCacheBody(r)
 	if err != nil {
 		return fmt.Errorf("failed to read request body: %w", err)
+	}
+
+	// Get effective proxy URL and create client
+	proxyURL := p.getEffectiveProxy(target)
+	client, err := p.createHTTPClientWithProxy(proxyURL)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP client with proxy: %w", err)
+	}
+
+	// Log proxy usage for debugging
+	if proxyURL != "" {
+		fmt.Printf("[INFO] Using HTTP proxy: %s for target: %s\n", proxyURL, targetURL)
 	}
 
 	// Initialize connection metrics
@@ -84,7 +97,7 @@ func (p *ProxyHandler) forwardRequest(w http.ResponseWriter, r *http.Request, ta
 
 	p.copyHeaders(req, r, target)
 
-	resp, err := p.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP client error: %w", err)
 	}
@@ -106,16 +119,108 @@ func (p *ProxyHandler) forwardRequest(w http.ResponseWriter, r *http.Request, ta
 		"connection_reused":   metrics.ConnectionReused,
 	}
 
-	// Store metrics in request context for logger middleware
-	ctx := context.WithValue(r.Context(), "connection_metrics", metricsMap)
+	// Store metrics and target_url in request context for logger middleware
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, "connection_metrics", metricsMap)
+	
+	// Preserve target_url from the original context
+	if targetURLVal := r.Context().Value("target_url"); targetURLVal != nil {
+		ctx = context.WithValue(ctx, "target_url", targetURLVal)
+	}
+	
 	*r = *r.WithContext(ctx)
 
 	p.copyResponseHeaders(w, resp)
 	w.WriteHeader(resp.StatusCode)
 
-	_, err = io.Copy(w, resp.Body)
+	// Check if this is a streaming response (SSE or similar)
+	contentType := resp.Header.Get("Content-Type")
+	transferEncoding := resp.Header.Get("Transfer-Encoding")
+
+	isStreaming := strings.Contains(contentType, "text/event-stream") ||
+		strings.Contains(contentType, "application/x-ndjson") ||
+		strings.Contains(transferEncoding, "chunked") ||
+		resp.ContentLength == -1 || // Unknown content length indicates streaming
+		strings.Contains(contentType, "text/plain")
+
+	if isStreaming {
+		err = p.streamResponse(w, resp)
+	} else {
+		_, err = io.Copy(w, resp.Body)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to copy response body: %w", err)
+	}
+
+	return nil
+}
+
+func (p *ProxyHandler) streamResponse(w http.ResponseWriter, resp *http.Response) error {
+	// Get the Flusher interface to enable streaming
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// Fallback to regular copy if Flusher is not available
+		_, err := io.Copy(w, resp.Body)
+		return err
+	}
+
+	// Check if this is an SSE response for byte-based streaming
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/event-stream") {
+		return p.streamSSEResponse(w, resp.Body, flusher)
+	}
+
+	// For other streaming content, use byte-based streaming
+	return p.streamBytesResponse(w, resp.Body, flusher)
+}
+
+func (p *ProxyHandler) streamSSEResponse(w http.ResponseWriter, body io.Reader, flusher http.Flusher) error {
+	// Use small buffer to minimize latency but avoid breaking SSE chunks
+	buffer := make([]byte, 1024)
+	
+	for {
+		n, err := body.Read(buffer)
+		if n > 0 {
+			// Write the exact bytes received to preserve SSE format
+			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
+				return fmt.Errorf("failed to write SSE chunk: %w", writeErr)
+			}
+			// Flush immediately to ensure real-time streaming
+			flusher.Flush()
+		}
+		
+		if err != nil {
+			if err == io.EOF {
+				// End of stream - this is expected
+				break
+			}
+			return fmt.Errorf("failed to read SSE response: %w", err)
+		}
+	}
+	
+	return nil
+}
+
+func (p *ProxyHandler) streamBytesResponse(w http.ResponseWriter, body io.Reader, flusher http.Flusher) error {
+	// Use small buffer for non-SSE streaming content
+	buffer := make([]byte, 64)
+
+	for {
+		n, err := body.Read(buffer)
+		if n > 0 {
+			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
+				return fmt.Errorf("failed to write chunk: %w", writeErr)
+			}
+			flusher.Flush()
+		}
+
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("failed to read from response body: %w", err)
+		}
 	}
 
 	return nil
@@ -188,6 +293,17 @@ func (p *ProxyHandler) copyResponseHeaders(w http.ResponseWriter, resp *http.Res
 	for key, values := range resp.Header {
 		for _, value := range values {
 			w.Header().Add(key, value)
+		}
+	}
+
+	// Ensure proper SSE headers for streaming responses
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/event-stream") {
+		// Ensure SSE headers are properly set
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		if w.Header().Get("Access-Control-Allow-Origin") == "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 	}
 }

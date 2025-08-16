@@ -1,15 +1,20 @@
 package proxy
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"ccproxy/config"
 )
+
+// TargetURLSetter interface allows setting target URL for logging
+type TargetURLSetter interface {
+	SetTargetURL(url string)
+}
 
 type ProxyHandler struct {
 	config *config.Config
@@ -47,8 +52,11 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[INFO] Routing %s %s -> %s", r.Method, r.URL.Path, targetURL)
-	ctx := context.WithValue(r.Context(), "target_url", targetURL)
-	r = r.WithContext(ctx)
+	
+	// Set target URL in response writer for logging
+	if setter, ok := w.(TargetURLSetter); ok {
+		setter.SetTargetURL(targetURL)
+	}
 
 	if err := p.forwardRequestWithRetry(w, r, target); err != nil {
 		log.Printf("[ERROR] Failed to forward request to %s after all retries: %v (Client: %s, UserAgent: %s)",
@@ -156,4 +164,32 @@ func (p *ProxyHandler) isRetryableError(err error) bool {
 		}
 	}
 	return false
+}
+
+func (p *ProxyHandler) getEffectiveProxy(target *config.ProxyTarget) string {
+	// Target-specific proxy has higher priority than global proxy
+	if target.HTTPProxy != "" {
+		return target.HTTPProxy
+	}
+	return p.config.Proxy.HTTPProxy
+}
+
+func (p *ProxyHandler) createHTTPClientWithProxy(proxyURL string) (*http.Client, error) {
+	if proxyURL == "" {
+		// Return default client without proxy
+		return &http.Client{}, nil
+	}
+
+	parsedProxyURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL %s: %w", proxyURL, err)
+	}
+
+	transport := &http.Transport{
+		Proxy: http.ProxyURL(parsedProxyURL),
+	}
+
+	return &http.Client{
+		Transport: transport,
+	}, nil
 }

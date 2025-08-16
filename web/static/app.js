@@ -269,17 +269,23 @@ class LogViewer {
         // Format connection info
         const connectionInfo = this.formatConnectionInfo(log);
         
+        // Debug log to check target_url
+        console.log('Log entry:', {
+            path: log.path,
+            target_url: log.target_url,
+            method: log.method
+        });
+        
         return `
             <div class="log-entry" data-log-id="${Date.now()}-${Math.random()}" style="animation-delay: 0.1s">
                 <div class="log-header">
                     <span class="method ${methodClass}">${log.method}</span>
                     <span class="status-code ${statusClass}">${log.status_code}</span>
                     <span class="streaming-badge ${isStreaming ? 'streaming' : 'non-streaming'}">${isStreaming ? '✨ 流式' : '📄 非流'}</span>
-                    <span class="path">${log.path}${log.query ? '?' + log.query : ''}</span>
+                    ${this.formatRoutingInfo(log)}
                     <span class="duration">⏱️ ${log.duration}</span>
                     ${connectionInfo}
                     <span class="timestamp">🕰️ ${log.timestamp}</span>
-                    ${log.target_url ? `<a href="${log.target_url}" class="target-url" target="_blank">🌐 ${log.target_url}</a>` : ''}
                     <div class="log-actions">
                         <button class="btn btn-sm copy-json" title="复制JSON">📋</button>
                         <button class="btn btn-sm show-details">🔍 详情</button>
@@ -301,6 +307,18 @@ class LogViewer {
                         <button class="copy-section-btn" data-copy-type="connection-metrics">📋 复制</button>
                     </div>
                     <div class="detail-content">${this.formatConnectionMetricsDetails(log)}</div>
+                </div>
+            `;
+        }
+
+        if (log.target_url) {
+            details += `
+                <div class="detail-section">
+                    <div class="detail-title">
+                        <span>🎯 真实目标地址</span>
+                        <button class="copy-section-btn" data-copy-type="target-url">📋 复制</button>
+                    </div>
+                    <div class="detail-content">${log.target_url}</div>
                 </div>
             `;
         }
@@ -510,24 +528,51 @@ class LogViewer {
     formatConnectionInfo(log) {
         let connectionInfo = '';
         
-        // Show upstream latency if available
-        if (log.upstream_latency) {
-            connectionInfo += `<span class="connection-metric upstream-latency" title="上游延迟">🚀 ${log.upstream_latency}</span>`;
-        }
-        
-        // Show connection reused indicator
-        if (log.connection_reused !== undefined) {
-            const reuseIcon = log.connection_reused ? '♻️' : '🔗';
-            const reuseText = log.connection_reused ? '复用' : '新连';
-            connectionInfo += `<span class="connection-metric connection-reuse" title="${log.connection_reused ? '连接复用' : '新建连接'}">${reuseIcon} ${reuseText}</span>`;
-        }
-        
-        // Show first byte time if available and significant
+        // Show only first byte time if available
         if (log.first_byte_duration) {
             connectionInfo += `<span class="connection-metric first-byte" title="首字节延迟">🏃 ${log.first_byte_duration}</span>`;
         }
         
         return connectionInfo;
+    }
+
+    formatTargetURL(url) {
+        try {
+            const parsedUrl = new URL(url);
+            // Show hostname + path for better readability
+            const hostname = parsedUrl.hostname;
+            const path = parsedUrl.pathname;
+            
+            // If path is too long, truncate it
+            if (path.length > 30) {
+                return `${hostname}${path.substring(0, 27)}...`;
+            }
+            return `${hostname}${path}`;
+        } catch (e) {
+            // Fallback to showing the original URL if parsing fails
+            return url.length > 40 ? url.substring(0, 37) + '...' : url;
+        }
+    }
+
+    formatRoutingInfo(log) {
+        const sourcePath = `${log.path}${log.query ? '?' + log.query : ''}`;
+        
+        console.log('formatRoutingInfo called with:', {
+            sourcePath,
+            target_url: log.target_url,
+            hasTarget: !!log.target_url
+        });
+        
+        if (log.target_url) {
+            const targetPath = this.formatTargetURL(log.target_url);
+            const result = `<span class="routing-info"><span class="source-path">${sourcePath}</span><span class="routing-arrow">→</span><span class="target-path" title="目标地址: ${log.target_url}">${targetPath}</span></span>`;
+            console.log('Returning routing info:', result);
+            return result;
+        } else {
+            const result = `<span class="path">${sourcePath}</span>`;
+            console.log('Returning simple path:', result);
+            return result;
+        }
     }
 
     hasConnectionMetrics(log) {
@@ -820,6 +865,9 @@ class LogViewer {
         switch (copyType) {
             case 'connection-metrics':
                 content = this.formatConnectionMetricsDetails(log);
+                break;
+            case 'target-url':
+                content = log.target_url || '';
                 break;
             case 'remote-addr':
                 content = log.remote_addr || '';

@@ -341,6 +341,36 @@
             text-decoration: underline;
         }
 
+        .routing-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+        }
+
+        .source-path {
+            font-weight: 600;
+            color: #1d1d1f;
+            background: rgba(0, 122, 255, 0.08);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+        }
+
+        .routing-arrow {
+            color: #007aff;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .target-path {
+            color: #007aff;
+            font-weight: 500;
+            background: rgba(0, 122, 255, 0.05);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 122, 255, 0.2);
+        }
+
         .log-details {
             margin-top: 0.5rem;
             display: none;

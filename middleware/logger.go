@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -29,6 +30,7 @@ func NewLoggerMiddleware(handler http.Handler, hub *websocket.Hub, config *confi
 
 func (l *LoggerMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+	
 
 	var requestBody []byte
 	if r.Body != nil {
@@ -43,6 +45,7 @@ func (l *LoggerMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	l.handler.ServeHTTP(wrapped, r)
+
 
 	duration := time.Since(start)
 
@@ -60,9 +63,16 @@ func (l *LoggerMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	targetURL := ""
-	if val := r.Context().Value("target_url"); val != nil {
-		targetURL = val.(string)
+	// Get target URL from wrapped response writer instead of context
+	targetURL := wrapped.targetURL
+
+	// Process response body for both streaming and regular responses
+	responseBody := l.processResponseBody(wrapped.body.Bytes(), responseHeaders)
+	
+	// Add streaming indicator to help identify the response type
+	if wrapped.isStreaming && responseBody != "" {
+		responseBody = fmt.Sprintf("[STREAMING RESPONSE - %d bytes]\n%s", 
+			len(wrapped.body.Bytes()), responseBody)
 	}
 
 	logMessage := &websocket.LogMessage{
@@ -77,7 +87,7 @@ func (l *LoggerMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Duration:        duration.String(),
 		TargetURL:       targetURL,
 		RequestBody:     string(requestBody),
-		ResponseBody:    l.processResponseBody(wrapped.body.Bytes(), responseHeaders),
+		ResponseBody:    responseBody,
 	}
 
 	// Extract and set connection metrics if available
@@ -253,6 +263,8 @@ type responseWriterCapture struct {
 	http.ResponseWriter
 	statusCode int
 	body       *bytes.Buffer
+	isStreaming bool
+	targetURL  string
 }
 
 func (rw *responseWriterCapture) WriteHeader(code int) {
@@ -261,6 +273,29 @@ func (rw *responseWriterCapture) WriteHeader(code int) {
 }
 
 func (rw *responseWriterCapture) Write(b []byte) (int, error) {
+	// For streaming responses, capture the body for logging but mark as streaming
+	contentType := rw.Header().Get("Content-Type")
+	if strings.Contains(contentType, "text/event-stream") ||
+		strings.Contains(contentType, "application/x-ndjson") ||
+		rw.Header().Get("Transfer-Encoding") == "chunked" {
+		rw.isStreaming = true
+		// Still capture the body for complete logging
+		rw.body.Write(b)
+		return rw.ResponseWriter.Write(b)
+	}
+	
 	rw.body.Write(b)
 	return rw.ResponseWriter.Write(b)
+}
+
+// Implement http.Flusher interface
+func (rw *responseWriterCapture) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// SetTargetURL allows setting the target URL for logging
+func (rw *responseWriterCapture) SetTargetURL(url string) {
+	rw.targetURL = url
 }
