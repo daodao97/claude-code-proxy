@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CC Proxy - 实时日志监控</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌐</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            line-height: 1.6;
+            color: #1d1d1f;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            color: #1d1d1f;
+            padding: 0.5rem 2rem;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: nowrap;
+            gap: 1rem;
+            min-height: 100px;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }
+
+        .controls-section {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.022em;
+            background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0;
+        }
+
+        .header p {
+            opacity: 0.6;
+            font-size: 0.9rem;
+            font-weight: 400;
+            color: #6e6e73;
+            margin: 0;
+        }
+
+        .config-btn {
+            font-size: 0.8rem;
+            padding: 0.375rem 0.75rem;
+        }
+
+
+        .stats-section {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: nowrap;
+            flex-shrink: 1;
+            min-width: 0;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 0.25rem;
+            flex-shrink: 1;
+            min-width: 0;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #8e8e93;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .stat-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1d1d1f;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+            white-space: nowrap;
+        }
+
+        .stat-value.success {
+            color: #30d158;
+        }
+
+        .stat-value.error {
+            color: #ff3b30;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff3b30;
+            box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.2);
+            animation: pulse-disconnect 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #30d158;
+            box-shadow: 0 0 0 2px rgba(48, 209, 88, 0.2);
+            animation: pulse-connect 2s infinite;
+        }
+
+        @keyframes pulse-connect {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(48, 209, 88, 0.2); }
+            50% { box-shadow: 0 0 0 6px rgba(48, 209, 88, 0.1); }
+        }
+
+        @keyframes pulse-disconnect {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.2); }
+            50% { box-shadow: 0 0 0 6px rgba(255, 59, 48, 0.1); }
+        }
+
+        .btn {
+            padding: 0.625rem 1.25rem;
+            border: none;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #007aff;
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.95);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .btn.active {
+            background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        .btn.active:hover {
+            background: linear-gradient(135deg, #0056cc 0%, #4c46a8 100%);
+        }
+
+        .logs-container {
+            height: calc(100vh - 120px);
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            margin: 1rem 2rem 1.5rem;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .log-entry {
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            padding: 1.25rem;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+            transition: background-color 0.2s ease;
+        }
+
+        .log-entry:hover {
+            background: rgba(0,122,255,0.02);
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .method {
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .method.get { background: linear-gradient(135deg, #34c759 0%, #30d158 100%); color: white; }
+        .method.post { background: linear-gradient(135deg, #007aff 0%, #5ac8fa 100%); color: white; }
+        .method.put { background: linear-gradient(135deg, #ff9500 0%, #ffcc02 100%); color: white; }
+        .method.delete { background: linear-gradient(135deg, #ff3b30 0%, #ff6961 100%); color: white; }
+        .method.patch { background: linear-gradient(135deg, #5856d6 0%, #af52de 100%); color: white; }
+
+        .status-code {
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .status-code.success { background: linear-gradient(135deg, #34c759 0%, #30d158 100%); color: white; }
+        .status-code.error { background: linear-gradient(135deg, #ff3b30 0%, #ff6961 100%); color: white; }
+        .status-code.warning { background: linear-gradient(135deg, #ff9500 0%, #ffcc02 100%); color: white; }
+
+        .streaming-badge {
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .streaming-badge.streaming { 
+            background: linear-gradient(135deg, #5ac8fa 0%, #007aff 100%);
+            color: white;
+        }
+        
+        .streaming-badge.non-streaming { 
+            background: linear-gradient(135deg, #af52de 0%, #5856d6 100%);
+            color: white;
+        }
+
+        .connection-metric {
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.75rem;
+            margin: 0 0.25rem;
+            display: inline-block;
+        }
+
+        .connection-metric.upstream-latency {
+            background: linear-gradient(135deg, #32d74b 0%, #30d158 100%);
+            color: white;
+        }
+
+        .connection-metric.connection-reuse {
+            background: linear-gradient(135deg, #007aff 0%, #5ac8fa 100%);
+            color: white;
+        }
+
+        .connection-metric.first-byte {
+            background: linear-gradient(135deg, #ff9500 0%, #ffcc02 100%);
+            color: white;
+        }
+
+        .timestamp {
+            color: #8e8e93;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .duration {
+            color: #8e8e93;
+            font-size: 0.8rem;
+            font-weight: 500;
+            background: rgba(142, 142, 147, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+        }
+
+        .path {
+            font-weight: 600;
+            color: #1d1d1f;
+            background: rgba(0, 122, 255, 0.08);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+        }
+
+        .target-url {
+            color: #007aff;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .target-url:hover {
+            color: #0056cc;
+            text-decoration: underline;
+        }
+
+        .log-details {
+            margin-top: 0.5rem;
+            display: none;
+        }
+
+        .log-details.show {
+            display: block;
+        }
+
+        .detail-section {
+            margin: 0.5rem 0;
+            position: relative;
+        }
+
+        .detail-title {
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+            letter-spacing: -0.011em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .copy-section-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            color: #007aff;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            cursor: pointer;
+            opacity: 0.7;
+            font-weight: 500;
+        }
+
+        .copy-section-btn:hover {
+            background: rgba(255, 255, 255, 0.95);
+            color: #34c759;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            opacity: 1;
+        }
+
+        .copy-section-btn:active {
+            background: #34c759;
+            color: white;
+            transform: translateY(0);
+        }
+
+        .detail-section:hover .copy-section-btn {
+            opacity: 1;
+        }
+
+        .detail-content {
+            background: rgba(142, 142, 147, 0.08);
+            padding: 1rem;
+            border-radius: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 0.875rem;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .detail-content.binary-data {
+            background: linear-gradient(135deg, rgba(255, 149, 0, 0.1) 0%, rgba(255, 204, 2, 0.1) 100%);
+            border: 1px solid rgba(255, 149, 0, 0.3);
+            color: #8b4513;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #8e8e93;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 1rem;
+            color: #1d1d1f;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.022em;
+        }
+
+        .empty-state::before {
+            content: '📊';
+            display: block;
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .log-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-left: auto;
+        }
+
+        .copy-json {
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            color: #007aff;
+            font-size: 0.8rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .copy-json:hover {
+            background: rgba(255, 255, 255, 0.95);
+            color: #34c759;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .copy-json:active {
+            background: #34c759;
+            color: white;
+            transform: translateY(0);
+        }
+
+        /* Streaming response aggregation button */
+        .aggregate-stream-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            color: #5856d6;
+            font-size: 0.8rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            cursor: pointer;
+            margin-left: 0.5rem;
+        }
+
+        .aggregate-stream-btn:hover {
+            background: rgba(255, 255, 255, 0.95);
+            color: #5856d6;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .aggregate-stream-btn:active {
+            background: #5856d6;
+            color: white;
+            transform: translateY(0);
+        }
+
+        .aggregate-stream-btn.active {
+            background: linear-gradient(135deg, #5856d6 0%, #af52de 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(88, 86, 214, 0.3);
+        }
+
+        .aggregate-stream-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .aggregate-stream-btn:disabled:hover {
+            background: rgba(255, 255, 255, 0.8);
+            transform: none !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* Aggregated content styles */
+        .aggregated-content {
+            background: rgba(88, 86, 214, 0.08);
+            border: 1px solid rgba(88, 86, 214, 0.2);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 0.5rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+            line-height: 1.4;
+        }
+        
+        .aggregated-content > div:first-child {
+            margin-bottom: 0.75rem;
+        }
+        
+        .aggregated-content > div:last-child {
+            margin-bottom: 0;
+        }
+
+        .aggregation-info {
+            font-size: 0.75rem;
+            color: #8e8e93;
+            margin-bottom: 0.5rem;
+            font-style: italic;
+        }
+
+        /* Notification styles */
+        .notification {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            color: white;
+            font-weight: 500;
+            z-index: 10000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: linear-gradient(135deg, #34c759 0%, #30d158 100%);
+        }
+
+        .notification.error {
+            background: linear-gradient(135deg, #ff3b30 0%, #ff6961 100%);
+        }
+
+        .notification.info {
+            background: linear-gradient(135deg, #007aff 0%, #5ac8fa 100%);
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            animation: fadeIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .modal.show {
+            display: block;
+        }
+
+        .modal-content {
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            margin: 2% auto;
+            padding: 0;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: slideIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            background: rgba(248, 249, 250, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 16px 16px 0 0;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #1d1d1f;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.022em;
+        }
+
+        .close {
+            color: #8e8e93;
+            font-size: 24px;
+            font-weight: 300;
+            cursor: pointer;
+            line-height: 1;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            background: rgba(142, 142, 147, 0.1);
+        }
+
+        .close:hover {
+            color: #1d1d1f;
+            background: rgba(142, 142, 147, 0.2);
+            transform: scale(1.1);
+        }
+
+        .modal-body {
+            padding: 2rem;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { 
+                opacity: 0;
+                transform: translateY(-30px) scale(0.95);
+            }
+            to { 
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Smooth scrollbar styling - hidden until hover */
+        .logs-container {
+            scrollbar-width: thin;
+            scrollbar-color: transparent transparent;
+        }
+
+        .logs-container:hover {
+            scrollbar-color: rgba(0, 122, 255, 0.3) rgba(0, 0, 0, 0.05);
+        }
+
+        .logs-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .logs-container::-webkit-scrollbar-track {
+            background: transparent;
+            border-radius: 4px;
+        }
+
+        .logs-container::-webkit-scrollbar-thumb {
+            background: transparent;
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+
+        .logs-container:hover::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .logs-container:hover::-webkit-scrollbar-thumb {
+            background: rgba(0, 122, 255, 0.3);
+        }
+
+        .logs-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 122, 255, 0.5);
+        }
+
+        /* Enhanced log entry animations */
+        .log-entry {
+            animation: fadeInUp 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Glass morphism effect for all containers */
+        .glass {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        @media (max-width: 1200px) {
+            .header {
+                padding: 1.25rem 1.5rem;
+            }
+            
+            .header-right {
+                gap: 1rem;
+            }
+            
+            .stats-section {
+                gap: 0.75rem;
+            }
+            
+            .controls-section {
+                gap: 0.5rem;
+            }
+            
+            .controls-section .btn {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.75rem;
+            }
+            
+            .header-left {
+                width: 100%;
+            }
+            
+            .header-right {
+                width: 100%;
+                justify-content: space-between;
+                gap: 1rem;
+                flex-wrap: wrap;
+            }
+            
+            .controls-section {
+                gap: 0.5rem;
+            }
+            
+            .controls-section .btn {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.8rem;
+            }
+            
+            .header h1 {
+                font-size: 1.5rem;
+                margin-bottom: 0.125rem;
+            }
+            
+            .header p {
+                font-size: 0.8rem;
+                margin-top: 0.125rem;
+            }
+            
+            
+            .stats-section {
+                gap: 1rem;
+            }
+            
+            .stat-item {
+                flex: 1;
+                min-width: 60px;
+            }
+            
+            .stat-label {
+                font-size: 0.7rem;
+            }
+            
+            .stat-value {
+                font-size: 1rem;
+            }
+            
+            .logs-container {
+                margin: 0.75rem;
+                height: calc(100vh - 140px);
+                border-radius: 12px;
+            }
+            
+            .log-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.75rem;
+            }
+            
+            .log-entry {
+                padding: 1rem;
+            }
+            
+            .modal-content {
+                width: 95%;
+                margin: 5% auto;
+                border-radius: 12px;
+            }
+            
+            .modal-header {
+                padding: 1rem 1.5rem;
+            }
+            
+            .modal-body {
+                padding: 1.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header {
+                padding: 0.75rem;
+                gap: 0.5rem;
+            }
+            
+            .header-right {
+                flex-direction: column;
+                align-items: flex-start;
+                width: 100%;
+                gap: 0.75rem;
+            }
+            
+            .controls-section {
+                gap: 0.375rem;
+                width: 100%;
+            }
+            
+            .controls-section .btn {
+                padding: 0.375rem 0.5rem;
+                font-size: 0.75rem;
+                flex: 1;
+                min-width: 0;
+            }
+            
+            .header h1 {
+                font-size: 1.25rem;
+            }
+            
+            .header p {
+                font-size: 0.75rem;
+            }
+            
+            
+            .stats-section {
+                gap: 0.75rem;
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .stat-item {
+                min-width: 50px;
+                flex: 1;
+            }
+            
+            .stat-label {
+                font-size: 0.65rem;
+            }
+            
+            .stat-value {
+                font-size: 0.9rem;
+            }
+            
+            .logs-container {
+                margin: 0.5rem;
+                height: calc(100vh - 160px);
+                border-radius: 8px;
+            }
+            
+            .log-entry {
+                padding: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>🌐 CC Proxy</h1>
+            <p id="proxyAddress">加载中...</p>
+            <button class="btn config-btn" id="configBtn">⚙️ 查看配置</button>
+        </div>
+        <div class="header-right">
+            <div class="status">
+                <div class="status-dot" id="connectionStatus"></div>
+                <span id="connectionText">未连接</span>
+            </div>
+            <div class="stats-section">
+                <div class="stat-item">
+                    <span class="stat-label">总请求:</span>
+                    <span class="stat-value" id="totalRequests">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">成功:</span>
+                    <span class="stat-value success" id="successRequests">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">错误:</span>
+                    <span class="stat-value error" id="errorRequests">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">运行时间:</span>
+                    <span class="stat-value" id="uptime">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">平均延迟:</span>
+                    <span class="stat-value" id="avgLatency">--</span>
+                </div>
+            </div>
+            <div class="controls-section">
+                <button class="btn" id="clearBtn">🗑️ 清空日志</button>
+                <button class="btn" id="pauseBtn">⏸️ 暂停</button>
+                <button class="btn active" id="autoScrollBtn">📜 自动滚动</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="logs-container" id="logsContainer">
+        <div class="empty-state">
+            <h3>等待请求数据...</h3>
+            <p>当有请求通过代理服务器时，日志将在这里显示</p>
+        </div>
+    </div>
+
+    <!-- Modal for log details -->
+    <div id="logModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>日志详情</h3>
+                <span class="close" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Details will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for config details -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>配置详情</h3>
+                <span class="close" id="closeConfigModal">&times;</span>
+            </div>
+            <div class="modal-body" id="configModalBody">
+                <!-- Config details will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
