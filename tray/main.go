@@ -256,7 +256,7 @@ func onReady() {
 	addMenu(&Menu{
 		Title: "关于 CC Proxy",
 		OnClick: func(m *systray.MenuItem) {
-			_ = open.Run("https://github.com/daodao97/ccproxy")
+			_ = open.Run("https://github.com/daodao97/claude-code-proxy")
 		},
 	})
 
