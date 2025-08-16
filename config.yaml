@@ -1,0 +1,27 @@
+server:
+  host: "0.0.0.0"
+  port: "9527"
+
+web:
+  port: "9528"
+  enabled: true
+  max_logs: 1000  # Maximum logs to keep in web interface
+
+proxy:
+  timeout: 30           # Proxy request timeout in seconds
+  max_retries: 3        # Maximum number of retry attempts
+  retry_delay: 1000     # Delay between retries in milliseconds
+  targets:
+    - path: "/v1/*"
+      target_url: "https://api.aicoding.sh"
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE", "ANY"]
+      headers:
+        X-Forwarded-For: "proxy"
+
+websocket:
+  buffer_size: 1024     # WebSocket read buffer size in bytes
+  broadcast_size: 1000  # WebSocket broadcast channel buffer size
+
+logging:
+  level: "info"
+  file: ""
