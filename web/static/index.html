@@ -394,6 +394,35 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+            padding: 0.5rem;
+            border-radius: 8px;
+            background: rgba(0, 122, 255, 0.02);
+            border: 1px solid rgba(0, 122, 255, 0.1);
+        }
+
+        .detail-title:hover {
+            background: rgba(0, 122, 255, 0.05);
+            border-color: rgba(0, 122, 255, 0.2);
+        }
+
+        .detail-title-text {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .collapse-icon {
+            font-size: 0.8rem;
+            color: #007aff;
+            transition: transform 0.2s ease;
+            font-weight: 600;
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
         }
 
         .copy-section-btn {
@@ -439,6 +468,15 @@
             font-size: 0.875rem;
             font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
             border: 1px solid rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .detail-content.collapsed {
+            max-height: 0;
+            padding: 0 1rem;
+            margin-top: 0;
+            opacity: 0;
         }
 
         .detail-content.binary-data {

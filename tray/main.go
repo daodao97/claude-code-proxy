@@ -294,7 +294,16 @@ func (cp *CCProxy) Start() error {
 	cp.ctx, cp.cancel = context.WithCancel(context.Background())
 
 	// 创建 WebSocket Hub
-	cp.hub = websocket.NewHub(cfg.WebSocket.BroadcastSize)
+	dataDir := filepath.Join(confDir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+	
+	hub, err := websocket.NewHub(cfg.WebSocket.BroadcastSize, dataDir)
+	if err != nil {
+		log.Fatalf("Failed to create websocket hub: %v", err)
+	}
+	cp.hub = hub
 	go cp.hub.Run()
 
 	// 创建代理处理器

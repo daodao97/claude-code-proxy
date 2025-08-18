@@ -26,7 +26,16 @@ type Server struct {
 }
 
 func NewServer(cfg *config.Config) *Server {
-	hub := websocket.NewHub(cfg.WebSocket.BroadcastSize)
+	// 创建数据目录
+	dataDir := "./data"
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+
+	hub, err := websocket.NewHub(cfg.WebSocket.BroadcastSize, dataDir)
+	if err != nil {
+		log.Fatalf("Failed to create websocket hub: %v", err)
+	}
 	go hub.Run()
 
 	handler := proxy.NewProxyHandler(cfg)

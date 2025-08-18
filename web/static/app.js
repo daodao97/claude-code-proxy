@@ -14,6 +14,7 @@ class LogViewer {
         this.initElements();
         this.bindEvents();
         this.loadConfig();
+        this.loadHistory();
         this.connect();
         this.initKeyboardShortcuts();
     }
@@ -144,6 +145,36 @@ class LogViewer {
         }
     }
 
+    async loadHistory(limit = 50) {
+        try {
+            const response = await fetch(`/api/history?limit=${limit}`);
+            if (response.ok) {
+                const history = await response.json();
+                console.log(`加载了 ${history.length} 条历史消息`);
+                
+                // 按时间顺序添加历史消息（后端已返回倒序，最新的在前）
+                for (const logData of history) {
+                    this.addLog(logData, true); // 第二个参数表示这是历史消息
+                    if (logData.stats) {
+                        this.updateStats(logData.stats);
+                    }
+                }
+                
+                // 如果有历史消息，移除空状态
+                if (history.length > 0) {
+                    const emptyState = this.logsContainer.querySelector('.empty-state');
+                    if (emptyState) {
+                        emptyState.remove();
+                    }
+                }
+            } else {
+                console.warn('无法加载历史消息:', response.status);
+            }
+        } catch (error) {
+            console.error('加载历史消息失败:', error);
+        }
+    }
+
     connect() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -190,20 +221,29 @@ class LogViewer {
         }
     }
 
-    addLog(logData) {
-        this.logs.unshift(logData);
+    addLog(logData, isHistorical = false) {
+        if (isHistorical) {
+            // 对于历史消息，直接按顺序添加到末尾（后端已排序）
+            this.logs.push(logData);
+        } else {
+            // 对于新消息，添加到开头
+            this.logs.unshift(logData);
+        }
         
         // Track latency for average calculation
         this.trackLatency(logData);
         
         if (this.logs.length > this.maxLogs) {
+            // 如果超过限制，保留最新的消息
             this.logs = this.logs.slice(0, this.maxLogs);
         }
 
         this.renderLogs();
         
-        // Add subtle notification for new log
-        this.showNewLogNotification();
+        // 只为新消息显示通知
+        if (!isHistorical) {
+            this.showNewLogNotification();
+        }
     }
 
     renderLogs() {
@@ -302,11 +342,14 @@ class LogViewer {
         if (this.hasConnectionMetrics(log)) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>🔗 连接指标</span>
+                    <div class="detail-title" data-section="connection-metrics">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>🔗 连接指标</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="connection-metrics">📋 复制</button>
                     </div>
-                    <div class="detail-content">${this.formatConnectionMetricsDetails(log)}</div>
+                    <div class="detail-content" data-section-content="connection-metrics">${this.formatConnectionMetricsDetails(log)}</div>
                 </div>
             `;
         }
@@ -314,11 +357,14 @@ class LogViewer {
         if (log.target_url) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>🎯 真实目标地址</span>
+                    <div class="detail-title" data-section="target-url">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>🎯 真实目标地址</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="target-url">📋 复制</button>
                     </div>
-                    <div class="detail-content">${log.target_url}</div>
+                    <div class="detail-content" data-section-content="target-url">${log.target_url}</div>
                 </div>
             `;
         }
@@ -326,11 +372,14 @@ class LogViewer {
         if (log.remote_addr) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>🌐 客户端地址</span>
+                    <div class="detail-title" data-section="remote-addr">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>🌐 客户端地址</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="remote-addr">📋 复制</button>
                     </div>
-                    <div class="detail-content">${log.remote_addr}</div>
+                    <div class="detail-content" data-section-content="remote-addr">${log.remote_addr}</div>
                 </div>
             `;
         }
@@ -338,11 +387,14 @@ class LogViewer {
         if (log.request_headers && Object.keys(log.request_headers).length > 0) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>📤 请求头</span>
+                    <div class="detail-title" data-section="request-headers">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>📤 请求头</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="request-headers">📋 复制</button>
                     </div>
-                    <div class="detail-content">${JSON.stringify(log.request_headers, null, 2)}</div>
+                    <div class="detail-content" data-section-content="request-headers">${JSON.stringify(log.request_headers, null, 2)}</div>
                 </div>
             `;
         }
@@ -350,11 +402,14 @@ class LogViewer {
         if (log.response_headers && Object.keys(log.response_headers).length > 0) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>📥 响应头</span>
+                    <div class="detail-title" data-section="response-headers">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>📥 响应头</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="response-headers">📋 复制</button>
                     </div>
-                    <div class="detail-content">${JSON.stringify(log.response_headers, null, 2)}</div>
+                    <div class="detail-content" data-section-content="response-headers">${JSON.stringify(log.response_headers, null, 2)}</div>
                 </div>
             `;
         }
@@ -362,11 +417,14 @@ class LogViewer {
         if (log.request_body) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>📝 请求体</span>
+                    <div class="detail-title" data-section="request-body">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>📝 请求体</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="request-body">📋 复制</button>
                     </div>
-                    <div class="detail-content">${this.escapeHtml(log.request_body)}</div>
+                    <div class="detail-content" data-section-content="request-body">${this.escapeHtml(log.request_body)}</div>
                 </div>
             `;
         }
@@ -377,14 +435,17 @@ class LogViewer {
             
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>📄 响应体</span>
+                    <div class="detail-title" data-section="response-body">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>📄 响应体</span>
+                        </div>
                         <div style="display: flex; gap: 0.5rem; align-items: center;">
                             <button class="copy-section-btn" data-copy-type="response-body">📋 复制</button>
                             ${isStreamingLog ? '<button class="aggregate-stream-btn" data-log-id="stream-toggle">🔗 聚合流式响应</button>' : ''}
                         </div>
                     </div>
-                    <div class="detail-content${isBinary ? ' binary-data' : ''}" data-original-content="${this.escapeHtml(log.response_body)}">${this.escapeHtml(log.response_body)}</div>
+                    <div class="detail-content${isBinary ? ' binary-data' : ''}" data-section-content="response-body" data-original-content="${this.escapeHtml(log.response_body)}">${this.escapeHtml(log.response_body)}</div>
                 </div>
             `;
         }
@@ -392,11 +453,14 @@ class LogViewer {
         if (log.error) {
             details += `
                 <div class="detail-section">
-                    <div class="detail-title">
-                        <span>❌ 错误信息</span>
+                    <div class="detail-title" data-section="error">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>❌ 错误信息</span>
+                        </div>
                         <button class="copy-section-btn" data-copy-type="error">📋 复制</button>
                     </div>
-                    <div class="detail-content" style="color: #e74c3c;">${log.error}</div>
+                    <div class="detail-content" data-section-content="error" style="color: #e74c3c;">${log.error}</div>
                 </div>
             `;
         }
@@ -539,9 +603,17 @@ class LogViewer {
     formatTargetURL(url) {
         try {
             const parsedUrl = new URL(url);
-            // Show hostname + path for better readability
-            const hostname = parsedUrl.hostname;
+            // Show hostname + port (if not default) + path for better readability
+            let hostname = parsedUrl.hostname;
             const path = parsedUrl.pathname;
+            const port = parsedUrl.port;
+            
+            // Add port if it's not the default port for the protocol
+            if (port && 
+                !((parsedUrl.protocol === 'http:' && port === '80') || 
+                  (parsedUrl.protocol === 'https:' && port === '443'))) {
+                hostname = `${hostname}:${port}`;
+            }
             
             // If path is too long, truncate it
             if (path.length > 30) {
@@ -744,6 +816,9 @@ class LogViewer {
         // Bind copy section events
         this.bindCopySectionEvents(log);
         
+        // Bind collapse section events
+        this.bindCollapseSectionEvents();
+        
         // Add entrance animation for modal content
         const modalContent = this.modal.querySelector('.modal-content');
         modalContent.style.transform = 'translateY(-30px) scale(0.95)';
@@ -777,6 +852,9 @@ class LogViewer {
         this.configModal.classList.add('show');
         document.body.style.overflow = 'hidden';
         
+        // Bind collapse section events for config modal
+        this.bindConfigCollapseSectionEvents();
+        
         // Add entrance animation for modal content
         const modalContent = this.configModal.querySelector('.modal-content');
         modalContent.style.transform = 'translateY(-30px) scale(0.95)';
@@ -804,8 +882,13 @@ class LogViewer {
         const content = this.configYaml || JSON.stringify(config, null, 2);
         return `
             <div class="detail-section">
-                <div class="detail-title">📋 完整配置</div>
-                <div class="detail-content">${this.escapeHtml(content)}</div>
+                <div class="detail-title" data-section="config">
+                    <div class="detail-title-text">
+                        <span class="collapse-icon">▼</span>
+                        <span>📋 完整配置</span>
+                    </div>
+                </div>
+                <div class="detail-content" data-section-content="config">${this.escapeHtml(content)}</div>
             </div>
         `;
     }
@@ -856,6 +939,68 @@ class LogViewer {
                 this.copySectionContent(log, btn);
             });
         });
+    }
+
+    bindCollapseSectionEvents() {
+        const detailTitles = this.modalBody.querySelectorAll('.detail-title[data-section]');
+        detailTitles.forEach(title => {
+            title.addEventListener('click', (e) => {
+                // 避免点击复制按钮时触发折叠
+                if (e.target.classList.contains('copy-section-btn') || e.target.closest('.copy-section-btn')) {
+                    return;
+                }
+                this.toggleSectionCollapse(title);
+            });
+        });
+    }
+
+    toggleSectionCollapse(titleElement) {
+        const sectionName = titleElement.getAttribute('data-section');
+        const contentElement = this.modalBody.querySelector(`[data-section-content="${sectionName}"]`);
+        const collapseIcon = titleElement.querySelector('.collapse-icon');
+        
+        if (!contentElement || !collapseIcon) return;
+        
+        if (contentElement.classList.contains('collapsed')) {
+            // 展开
+            contentElement.classList.remove('collapsed');
+            collapseIcon.classList.remove('collapsed');
+            collapseIcon.textContent = '▼';
+        } else {
+            // 折叠
+            contentElement.classList.add('collapsed');
+            collapseIcon.classList.add('collapsed');
+            collapseIcon.textContent = '▶';
+        }
+    }
+
+    bindConfigCollapseSectionEvents() {
+        const detailTitles = this.configModalBody.querySelectorAll('.detail-title[data-section]');
+        detailTitles.forEach(title => {
+            title.addEventListener('click', (e) => {
+                this.toggleConfigSectionCollapse(title);
+            });
+        });
+    }
+
+    toggleConfigSectionCollapse(titleElement) {
+        const sectionName = titleElement.getAttribute('data-section');
+        const contentElement = this.configModalBody.querySelector(`[data-section-content="${sectionName}"]`);
+        const collapseIcon = titleElement.querySelector('.collapse-icon');
+        
+        if (!contentElement || !collapseIcon) return;
+        
+        if (contentElement.classList.contains('collapsed')) {
+            // 展开
+            contentElement.classList.remove('collapsed');
+            collapseIcon.classList.remove('collapsed');
+            collapseIcon.textContent = '▼';
+        } else {
+            // 折叠
+            contentElement.classList.add('collapsed');
+            collapseIcon.classList.add('collapsed');
+            collapseIcon.textContent = '▶';
+        }
     }
 
     async copySectionContent(log, button) {
