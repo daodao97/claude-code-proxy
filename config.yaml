@@ -16,7 +16,9 @@ proxy:
       target_url: "https://api.aicoding.sh"
       methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE", "ANY"]
       headers:
-        X-Forwarded-For: "proxy"
+        X-Forwarded-For: "ccproxy"
+        X-Proxy-Source: "ccproxy-server"
+        User-Agent: "CCProxy/1.0"
 
 websocket:
   buffer_size: 1024     # WebSocket read buffer size in bytes

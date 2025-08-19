@@ -49,10 +49,18 @@ func (l *LoggerMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	duration := time.Since(start)
 
+	// Use actual headers sent to target if available, otherwise use original headers
 	requestHeaders := make(map[string]string)
-	for key, values := range r.Header {
-		if len(values) > 0 {
-			requestHeaders[key] = values[0]
+	if actualHeaders := r.Context().Value("actual_request_headers"); actualHeaders != nil {
+		if headerMap, ok := actualHeaders.(map[string]string); ok {
+			requestHeaders = headerMap
+		}
+	} else {
+		// Fallback to original headers if actual headers not available
+		for key, values := range r.Header {
+			if len(values) > 0 {
+				requestHeaders[key] = values[0]
+			}
 		}
 	}
 

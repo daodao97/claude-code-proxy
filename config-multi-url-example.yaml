@@ -1,0 +1,42 @@
+server:
+  host: "0.0.0.0"
+  port: "9527"
+
+web:
+  port: "9528"
+  enabled: true
+  max_logs: 1000
+
+proxy:
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1000
+  targets:
+    # Example 1: Multiple URLs using comma-separated target_url
+    - path: "/v1/*"
+      target_url: "https://api.openai.com,https://api.anthropic.com,https://api.google.com"
+      health_check_path: "/health"
+      health_check_delay: 30
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+      headers:
+        X-Forwarded-For: "proxy"
+
+    # Example 2: Multiple URLs with custom health check settings
+    - path: "/api/*"
+      target_url: "https://api1.example.com, https://api2.example.com, https://api3.example.com"
+      health_check_path: "/"
+      health_check_delay: 15
+      methods: ["GET", "POST"]
+
+    # Example 3: Single URL (backward compatibility)
+    - path: "/static/*"
+      target_url: "https://cdn.example.com"
+      methods: ["GET"]
+
+websocket:
+  buffer_size: 1024
+  broadcast_size: 1000
+
+logging:
+  level: "info"
+  file: ""

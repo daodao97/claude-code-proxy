@@ -158,14 +158,15 @@ func onReady() {
 	restartMenu = addMenu(&Menu{
 		Title: "重启代理",
 		OnClick: func(m *systray.MenuItem) {
+			m.Disable()
 			if ccproxy.Running {
 				restartProxy()
 			} else {
 				startProxy(proxyMenu)
 			}
+			m.Enable()
 		},
 	})
-	restartMenu.Hide()
 
 	// 添加分隔符
 	systray.AddSeparator()
@@ -298,7 +299,7 @@ func (cp *CCProxy) Start() error {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
-	
+
 	hub, err := websocket.NewHub(cfg.WebSocket.BroadcastSize, dataDir)
 	if err != nil {
 		log.Fatalf("Failed to create websocket hub: %v", err)
@@ -581,7 +582,7 @@ func watchConfigFile(restartCallback func()) {
 				return
 			}
 			if strings.Contains(event.String(), "WRITE") && ccproxy.Running {
-				showNotification("配置文件已更改", "点击通知重启代理服务")
+				showNotification("配置文件已更改", "请重启代理服务")
 				// 可以在这里添加自动重启逻辑
 				// restartCallback()
 			}

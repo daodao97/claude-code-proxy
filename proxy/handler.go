@@ -17,13 +17,20 @@ type TargetURLSetter interface {
 }
 
 type ProxyHandler struct {
-	config *config.Config
-	client *http.Client
+	config        *config.Config
+	client        *http.Client
+	healthChecker *HealthChecker
 }
 
 func NewProxyHandler(cfg *config.Config) *ProxyHandler {
+	healthChecker := NewHealthChecker()
+	
+	// Start health checks for all target URLs
+	healthChecker.StartHealthChecks(cfg.Proxy.Targets)
+	
 	return &ProxyHandler{
-		config: cfg,
+		config:        cfg,
+		healthChecker: healthChecker,
 		client: &http.Client{
 			// No timeout for proxy client to support long-running requests
 			// including streaming responses, file uploads, and AI model inference
@@ -43,10 +50,22 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetURL, err := p.buildTargetURL(r.URL, target)
+	// Select the fastest healthy URL
+	fastestURL := p.selectFastestURL(target)
+	if fastestURL == "" {
+		log.Printf("[ERROR] No available URLs for target %s", target.Path)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Create a copy of target with the selected URL
+	selectedTarget := *target
+	selectedTarget.TargetURL = fastestURL
+
+	targetURL, err := p.buildTargetURL(r.URL, &selectedTarget)
 	if err != nil {
 		log.Printf("[ERROR] Failed to build target URL for %s: %v (Original path: %s, Target: %s)",
-			r.URL.Path, err, r.URL.String(), target.TargetURL)
+			r.URL.Path, err, r.URL.String(), fastestURL)
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
@@ -58,12 +77,33 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		setter.SetTargetURL(targetURL)
 	}
 
-	if err := p.forwardRequestWithRetry(w, r, target); err != nil {
+	if err := p.forwardRequestWithRetry(w, r, &selectedTarget); err != nil {
 		log.Printf("[ERROR] Failed to forward request to %s after all retries: %v (Client: %s, UserAgent: %s)",
 			targetURL, err, r.RemoteAddr, r.Header.Get("User-Agent"))
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
+}
+
+// selectFastestURL selects the fastest healthy URL from the target's URLs
+func (p *ProxyHandler) selectFastestURL(target *config.ProxyTarget) string {
+	// If there are multiple URLs, use health checker to find the fastest
+	if len(target.TargetURLs) > 1 {
+		return p.healthChecker.GetFastestHealthyURL(target.TargetURLs)
+	}
+	
+	// If there's only one URL in TargetURLs, use it
+	if len(target.TargetURLs) == 1 {
+		return target.TargetURLs[0]
+	}
+	
+	// Fallback to the original TargetURL
+	return target.TargetURL
+}
+
+// GetHealthChecker returns the health checker instance for external access
+func (p *ProxyHandler) GetHealthChecker() *HealthChecker {
+	return p.healthChecker
 }
 
 func (p *ProxyHandler) getRequestInfo(r *http.Request) string {

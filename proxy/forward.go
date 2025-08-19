@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -122,6 +123,15 @@ func (p *ProxyHandler) forwardRequest(w http.ResponseWriter, r *http.Request, ta
 	// Store metrics and target_url in request context for logger middleware
 	ctx := r.Context()
 	ctx = context.WithValue(ctx, "connection_metrics", metricsMap)
+	
+	// Store the actual request headers that were sent to the target
+	actualHeaders := make(map[string]string)
+	for key, values := range req.Header {
+		if len(values) > 0 {
+			actualHeaders[key] = values[0]
+		}
+	}
+	ctx = context.WithValue(ctx, "actual_request_headers", actualHeaders)
 	
 	// Preserve target_url from the original context
 	if targetURLVal := r.Context().Value("target_url"); targetURLVal != nil {
@@ -275,6 +285,7 @@ func (p *ProxyHandler) buildTargetURL(requestURL *url.URL, target *config.ProxyT
 }
 
 func (p *ProxyHandler) copyHeaders(req *http.Request, original *http.Request, target *config.ProxyTarget) {
+	// Copy all original headers except Host
 	for key, values := range original.Header {
 		if key == "Host" {
 			continue
@@ -284,8 +295,15 @@ func (p *ProxyHandler) copyHeaders(req *http.Request, original *http.Request, ta
 		}
 	}
 
+	// Add target-specific headers (these will override original headers if same key exists)
 	for key, value := range target.Headers {
+		log.Printf("[INFO] Adding target header: %s = %s", key, value)
 		req.Header.Set(key, value)
+	}
+	
+	// Log final headers for debugging
+	if len(target.Headers) > 0 {
+		log.Printf("[INFO] Request headers applied for %s. Target headers count: %d", target.TargetURL, len(target.Headers))
 	}
 }
 

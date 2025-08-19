@@ -3,6 +3,7 @@ package config
 import (
 	"gopkg.in/yaml.v2"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -43,11 +44,14 @@ type Config struct {
 }
 
 type ProxyTarget struct {
-	Path      string            `yaml:"path"`
-	TargetURL string            `yaml:"target_url"`
-	Methods   []string          `yaml:"methods"`
-	Headers   map[string]string `yaml:"headers"`
-	HTTPProxy string            `yaml:"http_proxy"` // Target-specific HTTP proxy
+	Path             string            `yaml:"path"`
+	TargetURL        string            `yaml:"target_url"`        // Supports comma-separated URLs
+	TargetURLs       []string          // Parsed URLs from TargetURL (internal use)
+	HealthCheckPath  string            `yaml:"health_check_path"` // Health check endpoint
+	HealthCheckDelay int               `yaml:"health_check_delay"` // Health check interval in seconds
+	Methods          []string          `yaml:"methods"`
+	Headers          map[string]string `yaml:"headers"`
+	HTTPProxy        string            `yaml:"http_proxy"` // Target-specific HTTP proxy
 }
 
 func LoadConfig(filename string) (*Config, error) {
@@ -63,6 +67,7 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	setDefaults(&config)
+	processTargetURLs(&config)
 	return &config, nil
 }
 
@@ -111,5 +116,47 @@ func setDefaults(config *Config) {
 	}
 	if config.Logging.Level == "" {
 		config.Logging.Level = "info"
+	}
+}
+
+// processTargetURLs processes comma-separated target_url field into target_urls array
+func processTargetURLs(config *Config) {
+	for i := range config.Proxy.Targets {
+		target := &config.Proxy.Targets[i]
+		
+		// Parse target_url field (supports comma-separated URLs)
+		if target.TargetURL != "" {
+			if strings.Contains(target.TargetURL, ",") {
+				// Multiple URLs separated by commas
+				urls := strings.Split(target.TargetURL, ",")
+				for _, url := range urls {
+					trimmed := strings.TrimSpace(url)
+					if trimmed != "" {
+						target.TargetURLs = append(target.TargetURLs, trimmed)
+					}
+				}
+				// Keep the first URL as the primary target_url
+				if len(target.TargetURLs) > 0 {
+					target.TargetURL = target.TargetURLs[0]
+				}
+			} else {
+				// Single URL case
+				target.TargetURLs = []string{target.TargetURL}
+			}
+		}
+		
+		// Set default health check path and delay
+		if target.HealthCheckPath == "" {
+			// For API endpoints, try to detect a reasonable health check path
+			// If the target looks like an API endpoint, use empty path (let health checker try different paths)
+			if strings.Contains(target.TargetURL, "api") {
+				target.HealthCheckPath = "" // Let health checker auto-detect
+			} else {
+				target.HealthCheckPath = "/"
+			}
+		}
+		if target.HealthCheckDelay == 0 {
+			target.HealthCheckDelay = 30 // 30 seconds default
+		}
 	}
 }
