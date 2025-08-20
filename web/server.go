@@ -32,6 +32,7 @@ func (w *WebServer) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/app.js", w.handleAppJS)
 	mux.HandleFunc("/api/config", w.handleConfig)
 	mux.HandleFunc("/api/history", w.handleHistory)
+	mux.HandleFunc("/api/clear-history", w.handleClearHistory)
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
 }
 
@@ -115,6 +116,31 @@ func (w *WebServer) handleHistory(writer http.ResponseWriter, request *http.Requ
 
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(writer).Encode(history); err != nil {
+		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (w *WebServer) handleClearHistory(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != "POST" && request.Method != "DELETE" {
+		http.Error(writer, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 清空历史记录
+	if err := w.hub.ClearHistory(); err != nil {
+		http.Error(writer, "Failed to clear history", http.StatusInternalServerError)
+		return
+	}
+
+	// 返回成功响应
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response := map[string]interface{}{
+		"success": true,
+		"message": "History cleared successfully",
+	}
+	
+	if err := json.NewEncoder(writer).Encode(response); err != nil {
 		http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

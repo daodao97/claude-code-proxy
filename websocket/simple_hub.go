@@ -208,6 +208,21 @@ func (h *Hub) GetHistory(limit int) ([]*LogMessage, error) {
 	return h.historyStorage.GetRecentMessages(limit)
 }
 
+// ClearHistory 清空所有历史记录
+func (h *Hub) ClearHistory() error {
+	// 清空内存中的历史记录
+	h.historyMu.Lock()
+	h.history = make([]*LogMessage, 0)
+	h.historyMu.Unlock()
+
+	// 如果有持久化存储，也清空磁盘文件
+	if h.historyStorage != nil {
+		return h.historyStorage.ClearHistory()
+	}
+	
+	return nil
+}
+
 func (h *Hub) sendHistoryToClient(client *Client) {
 	history, err := h.GetHistory(50) // 向新客户端发送最近50条记录
 	if err != nil {

@@ -493,32 +493,71 @@ class LogViewer {
         return '';
     }
 
-    clearLogs() {
+    async clearLogs() {
         // Add confirmation with smooth animation
         if (this.logs.length === 0) {
             this.showNotification('没有日志可清空', 'info');
             return;
         }
         
-        // Animate out existing logs
-        const logEntries = this.logsContainer.querySelectorAll('.log-entry');
-        logEntries.forEach((entry, index) => {
+        // 先调用后端接口清理历史日志
+        try {
+            const response = await fetch('/api/clear-history', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            console.log('后端清理结果:', result);
+            
+            // Animate out existing logs
+            const logEntries = this.logsContainer.querySelectorAll('.log-entry');
+            logEntries.forEach((entry, index) => {
+                setTimeout(() => {
+                    entry.style.opacity = '0';
+                    entry.style.transform = 'translateX(-100%)';
+                }, index * 50);
+            });
+            
+            // Clear after animation
             setTimeout(() => {
-                entry.style.opacity = '0';
-                entry.style.transform = 'translateX(-100%)';
-            }, index * 50);
-        });
-        
-        // Clear after animation
-        setTimeout(() => {
-            this.logs = [];
-            // Reset latency statistics
-            this.latencySum = 0;
-            this.latencyCount = 0;
-            this.updateAverageLatency();
-            this.renderLogs();
-            this.showNotification(`已清空 ${logEntries.length} 条日志`, 'success');
-        }, Math.min(logEntries.length * 50 + 300, 1000));
+                this.logs = [];
+                // Reset latency statistics
+                this.latencySum = 0;
+                this.latencyCount = 0;
+                this.updateAverageLatency();
+                this.renderLogs();
+                this.showNotification(`已清空 ${logEntries.length} 条日志`, 'success');
+            }, Math.min(logEntries.length * 50 + 300, 1000));
+            
+        } catch (error) {
+            console.error('清空历史日志失败:', error);
+            this.showNotification('清空历史日志失败，请重试', 'error');
+            
+            // 如果后端接口失败，仍然执行前端的清空操作
+            const logEntries = this.logsContainer.querySelectorAll('.log-entry');
+            logEntries.forEach((entry, index) => {
+                setTimeout(() => {
+                    entry.style.opacity = '0';
+                    entry.style.transform = 'translateX(-100%)';
+                }, index * 50);
+            });
+            
+            setTimeout(() => {
+                this.logs = [];
+                this.latencySum = 0;
+                this.latencyCount = 0;
+                this.updateAverageLatency();
+                this.renderLogs();
+                this.showNotification(`已清空前端 ${logEntries.length} 条日志`, 'info');
+            }, Math.min(logEntries.length * 50 + 300, 1000));
+        }
         
         // Add haptic feedback style animation
         this.clearBtn.style.transform = 'scale(0.95)';

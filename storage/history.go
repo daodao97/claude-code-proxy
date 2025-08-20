@@ -256,3 +256,33 @@ func (h *HistoryStorage) cleanupOldFiles() error {
 
 	return nil
 }
+
+// ClearHistory 清空所有历史记录
+func (h *HistoryStorage) ClearHistory() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	dataDir := filepath.Dir(h.filePath)
+	
+	// 获取所有历史文件
+	files, err := filepath.Glob(filepath.Join(dataDir, "history_*.jsonl"))
+	if err != nil {
+		return fmt.Errorf("failed to glob history files: %w", err)
+	}
+
+	// 删除所有历史文件
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			// 如果文件不存在，跳过错误
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove history file %s: %w", file, err)
+			}
+		}
+	}
+
+	// 更新当前文件路径，使用新的时间戳
+	filename := fmt.Sprintf("history_%s.jsonl", time.Now().Format("2006-01-02"))
+	h.filePath = filepath.Join(dataDir, filename)
+
+	return nil
+}
