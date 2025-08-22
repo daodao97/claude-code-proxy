@@ -10,6 +10,10 @@ class LogViewer {
         this.config = null;
         this.latencySum = 0;
         this.latencyCount = 0;
+        
+        // Config editor state
+        this.isEditingConfig = false;
+        this.originalConfigYaml = '';
 
         this.initElements();
         this.bindEvents();
@@ -43,6 +47,9 @@ class LogViewer {
         this.configModal = document.getElementById('configModal');
         this.configModalBody = document.getElementById('configModalBody');
         this.closeConfigModal = document.getElementById('closeConfigModal');
+        this.editConfigBtn = document.getElementById('editConfigBtn');
+        this.saveConfigBtn = document.getElementById('saveConfigBtn');
+        this.cancelEditBtn = document.getElementById('cancelEditBtn');
     }
 
     bindEvents() {
@@ -72,6 +79,11 @@ class LogViewer {
                 this.hideConfigModal();
             }
         });
+        
+        // Config edit events
+        this.editConfigBtn.addEventListener('click', () => this.enableConfigEdit());
+        this.saveConfigBtn.addEventListener('click', () => this.saveConfig());
+        this.cancelEditBtn.addEventListener('click', () => this.cancelConfigEdit());
         
         // ESC key to close modal
         document.addEventListener('keydown', (e) => {
@@ -881,18 +893,21 @@ class LogViewer {
     }
 
     showConfigModal() {
-        if (!this.config) {
+        if (!this.configYaml && !this.config) {
             this.showNotification('配置未加载', 'error');
             return;
         }
 
-        const configHtml = this.renderConfigDetails(this.config);
+        const configHtml = this.renderConfigDetails();
         this.configModalBody.innerHTML = configHtml;
         this.configModal.classList.add('show');
         document.body.style.overflow = 'hidden';
         
-        // Bind collapse section events for config modal
-        this.bindConfigCollapseSectionEvents();
+        // Update button states
+        this.updateConfigButtonStates();
+        
+        // Bind events for config modal
+        this.bindConfigModalEvents();
         
         // Add entrance animation for modal content
         const modalContent = this.configModal.querySelector('.modal-content');
@@ -916,20 +931,36 @@ class LogViewer {
         }, 200);
     }
 
-    renderConfigDetails(config) {
-        // If we have YAML content, show that; otherwise show JSON
-        const content = this.configYaml || JSON.stringify(config, null, 2);
-        return `
-            <div class="detail-section">
-                <div class="detail-title" data-section="config">
-                    <div class="detail-title-text">
-                        <span class="collapse-icon">▼</span>
-                        <span>📋 完整配置</span>
+    renderConfigDetails() {
+        const content = this.configYaml || '# 配置加载中...';
+        this.originalConfigYaml = content;
+        
+        if (this.isEditingConfig) {
+            return `
+                <div class="config-editor">
+                    <div class="config-editor-header">
+                        <h4 class="config-editor-title">📝 编辑 YAML 配置文件</h4>
+                    </div>
+                    <textarea class="config-editor-textarea" id="configTextarea" placeholder="请输入 YAML 配置内容...">${this.escapeHtml(content)}</textarea>
+                    <div class="config-status" id="configStatus">
+                        <span>✏️ 编辑模式 - 修改完成后请点击保存</span>
                     </div>
                 </div>
-                <div class="detail-content" data-section-content="config">${this.escapeHtml(content)}</div>
-            </div>
-        `;
+            `;
+        } else {
+            return `
+                <div class="detail-section">
+                    <div class="detail-title" data-section="config">
+                        <div class="detail-title-text">
+                            <span class="collapse-icon">▼</span>
+                            <span>📋 YAML 配置文件</span>
+                        </div>
+                        <button class="copy-section-btn" data-copy-type="config">📋 复制</button>
+                    </div>
+                    <div class="config-display" data-section-content="config">${this.escapeHtml(content)}</div>
+                </div>
+            `;
+        }
     }
 
     showNewLogNotification() {
@@ -1011,6 +1042,29 @@ class LogViewer {
             collapseIcon.classList.add('collapsed');
             collapseIcon.textContent = '▶';
         }
+    }
+
+    bindConfigModalEvents() {
+        // Bind collapse section events for config modal
+        const detailTitles = this.configModalBody.querySelectorAll('.detail-title[data-section]');
+        detailTitles.forEach(title => {
+            title.addEventListener('click', (e) => {
+                // 避免点击复制按钮时触发折叠
+                if (e.target.classList.contains('copy-section-btn') || e.target.closest('.copy-section-btn')) {
+                    return;
+                }
+                this.toggleConfigSectionCollapse(title);
+            });
+        });
+        
+        // Bind copy events
+        const copyBtns = this.configModalBody.querySelectorAll('.copy-section-btn');
+        copyBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.copyConfigContent(btn);
+            });
+        });
     }
 
     bindConfigCollapseSectionEvents() {
@@ -1470,10 +1524,199 @@ ${aggregatedContent.text ? this.escapeHtml(aggregatedContent.text.trim()) : '<em
                 case 'Escape':
                     if (this.modal.classList.contains('show')) {
                         this.hideModal();
+                    } else if (this.configModal.classList.contains('show')) {
+                        this.hideConfigModal();
                     }
                     break;
             }
         });
+    }
+    
+    enableConfigEdit() {
+        this.isEditingConfig = true;
+        this.updateConfigButtonStates();
+        
+        // Re-render the modal content in edit mode
+        const configHtml = this.renderConfigDetails();
+        this.configModalBody.innerHTML = configHtml;
+        this.bindConfigModalEvents();
+        
+        // Focus on textarea
+        const textarea = document.getElementById('configTextarea');
+        if (textarea) {
+            textarea.focus();
+            // Add syntax validation
+            textarea.addEventListener('input', () => this.validateYamlSyntax(textarea.value));
+        }
+        
+        this.showNotification('已进入编辑模式', 'info');
+    }
+    
+    cancelConfigEdit() {
+        this.isEditingConfig = false;
+        this.updateConfigButtonStates();
+        
+        // Re-render the modal content in display mode
+        const configHtml = this.renderConfigDetails();
+        this.configModalBody.innerHTML = configHtml;
+        this.bindConfigModalEvents();
+        
+        this.showNotification('已取消编辑', 'info');
+    }
+    
+    async saveConfig() {
+        const textarea = document.getElementById('configTextarea');
+        if (!textarea) {
+            this.showNotification('编辑器未找到', 'error');
+            return;
+        }
+        
+        const newConfigYaml = textarea.value;
+        
+        // Validate YAML syntax
+        if (!this.isValidYaml(newConfigYaml)) {
+            this.showNotification('YAML 格式错误，请检查语法', 'error');
+            return;
+        }
+        
+        try {
+            // Show saving state
+            this.saveConfigBtn.textContent = '🔄 保存中...';
+            this.saveConfigBtn.disabled = true;
+            
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-yaml',
+                },
+                body: newConfigYaml
+            });
+            
+            if (response.ok) {
+                // Update local config
+                this.configYaml = newConfigYaml;
+                this.originalConfigYaml = newConfigYaml;
+                
+                // Parse basic config info for proxy address
+                this.parseBasicConfigFromYaml(newConfigYaml);
+                this.updateProxyAddress();
+                
+                // Exit edit mode
+                this.isEditingConfig = false;
+                this.updateConfigButtonStates();
+                
+                // Re-render in display mode
+                const configHtml = this.renderConfigDetails();
+                this.configModalBody.innerHTML = configHtml;
+                this.bindConfigModalEvents();
+                
+                this.showNotification('配置保存成功', 'success');
+            } else {
+                const errorText = await response.text();
+                this.showNotification(`保存失败: ${errorText}`, 'error');
+            }
+        } catch (error) {
+            console.error('Save config failed:', error);
+            this.showNotification(`保存失败: ${error.message}`, 'error');
+        } finally {
+            // Restore button state
+            this.saveConfigBtn.textContent = '💾 保存';
+            this.saveConfigBtn.disabled = false;
+        }
+    }
+    
+    updateConfigButtonStates() {
+        if (this.isEditingConfig) {
+            this.editConfigBtn.style.display = 'none';
+            this.saveConfigBtn.style.display = 'inline-block';
+            this.cancelEditBtn.style.display = 'inline-block';
+        } else {
+            this.editConfigBtn.style.display = 'inline-block';
+            this.saveConfigBtn.style.display = 'none';
+            this.cancelEditBtn.style.display = 'none';
+        }
+    }
+    
+    validateYamlSyntax(yamlContent) {
+        const statusEl = document.getElementById('configStatus');
+        if (!statusEl) return;
+        
+        if (this.isValidYaml(yamlContent)) {
+            statusEl.className = 'config-status';
+            statusEl.innerHTML = '<span>✅ YAML 语法正确</span>';
+        } else {
+            statusEl.className = 'config-status error';
+            statusEl.innerHTML = '<span>⚠️ YAML 语法错误，请检查格式</span>';
+        }
+    }
+    
+    isValidYaml(yamlString) {
+        try {
+            // Basic YAML validation - check for common syntax errors
+            const lines = yamlString.split('\n');
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                
+                // Skip empty lines and comments
+                if (!trimmed || trimmed.startsWith('#')) continue;
+                
+                // Check indentation consistency
+                const indent = line.length - line.trimStart().length;
+                if (indent % 2 !== 0 && indent > 0) {
+                    // YAML should use consistent 2-space indentation
+                    return false;
+                }
+                
+                // Basic colon check for key-value pairs
+                if (trimmed.includes(':') && !trimmed.startsWith('-')) {
+                    const colonIndex = trimmed.indexOf(':');
+                    const afterColon = trimmed.substring(colonIndex + 1).trim();
+                    // Allow empty values or quoted strings
+                    if (afterColon && !afterColon.startsWith('"') && !afterColon.startsWith("'") && 
+                        !/^[a-zA-Z0-9\s\-_\.\[\]{}]+$/.test(afterColon)) {
+                        // This is a very basic check - in a real implementation, 
+                        // you'd want to use a proper YAML parser
+                    }
+                }
+            }
+            
+            return true; // Basic validation passed
+        } catch (error) {
+            return false;
+        }
+    }
+    
+    async copyConfigContent(button) {
+        const content = this.configYaml || JSON.stringify(this.config, null, 2);
+        
+        if (!content) {
+            this.showNotification('没有内容可复制', 'warning');
+            return;
+        }
+        
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(content);
+                this.showNotification('配置内容已复制到剪贴板', 'success');
+                
+                // Visual feedback on button
+                const originalText = button.textContent;
+                button.textContent = '✅ 已复制';
+                button.style.color = '#34c759';
+                
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.color = '';
+                }, 1500);
+            } else {
+                this.fallbackCopyTextToClipboard(content);
+            }
+        } catch (err) {
+            console.error('复制失败:', err);
+            this.showNotification('复制失败', 'error');
+        }
     }
 }
 

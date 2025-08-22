@@ -812,6 +812,91 @@
             border: 1px solid rgba(255, 255, 255, 0.18);
         }
 
+        /* Config editor styles */
+        .config-editor {
+            position: relative;
+            background: #2d3748;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .config-editor-header {
+            background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .config-editor-title {
+            color: #e2e8f0;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .config-editor-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .config-editor-textarea {
+            width: 100%;
+            min-height: 400px;
+            max-height: 60vh;
+            background: #1a202c;
+            color: #e2e8f0;
+            border: none;
+            padding: 1rem;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+            tab-size: 2;
+        }
+
+        .config-editor-textarea:focus {
+            background: #2d3748;
+        }
+
+        .config-display {
+            background: rgba(142, 142, 147, 0.08);
+            padding: 1rem;
+            border-radius: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 0.875rem;
+            font-family: 'SF Mono', 'Fira Code', Monaco, Consolas, monospace;
+            border: 1px solid rgba(0,0,0,0.05);
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .config-status {
+            padding: 0.5rem 1rem;
+            background: rgba(48, 209, 88, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.75rem;
+            color: #30d158;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .config-status.error {
+            background: rgba(255, 59, 48, 0.1);
+            color: #ff3b30;
+        }
+
+        .config-status.warning {
+            background: rgba(255, 149, 0, 0.1);
+            color: #ff9500;
+        }
+
         @media (max-width: 1200px) {
             .header {
                 padding: 1.25rem 1.5rem;
@@ -1054,8 +1139,13 @@
     <div id="configModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>配置详情</h3>
-                <span class="close" id="closeConfigModal">&times;</span>
+                <h3>配置管理</h3>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn" id="editConfigBtn" style="padding: 0.375rem 0.75rem; font-size: 0.8rem;">✏️ 编辑</button>
+                    <button class="btn" id="saveConfigBtn" style="padding: 0.375rem 0.75rem; font-size: 0.8rem; display: none; background: linear-gradient(135deg, #34c759 0%, #30d158 100%); color: white;">💾 保存</button>
+                    <button class="btn" id="cancelEditBtn" style="padding: 0.375rem 0.75rem; font-size: 0.8rem; display: none;">❌ 取消</button>
+                    <span class="close" id="closeConfigModal">&times;</span>
+                </div>
             </div>
             <div class="modal-body" id="configModalBody">
                 <!-- Config details will be inserted here -->

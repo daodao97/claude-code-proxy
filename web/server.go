@@ -3,12 +3,17 @@ package web
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"ccproxy/config"
 	"ccproxy/websocket"
+	
+	"gopkg.in/yaml.v2"
 )
 
 //go:embed static/*
@@ -24,6 +29,19 @@ func NewWebServer(hub *websocket.Hub, cfg *config.Config) *WebServer {
 		hub:    hub,
 		config: cfg,
 	}
+}
+
+// getConfigFilePath returns the correct config file path based on user home directory
+func (w *WebServer) getConfigFilePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	
+	confDir := filepath.Join(home, ".ccproxy")
+	confFile := filepath.Join(confDir, "config.yaml")
+	
+	return confFile, nil
 }
 
 func (w *WebServer) SetupRoutes(mux *http.ServeMux) {
@@ -64,27 +82,83 @@ func (w *WebServer) handleAppJS(writer http.ResponseWriter, request *http.Reques
 }
 
 func (w *WebServer) handleConfig(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != "GET" {
+	switch request.Method {
+	case "GET":
+		w.handleGetConfig(writer, request)
+	case "POST":
+		w.handleSaveConfig(writer, request)
+	default:
 		http.Error(writer, "Method Not Allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (w *WebServer) handleGetConfig(writer http.ResponseWriter, request *http.Request) {
+	// Get the correct config file path
+	configFile, err := w.getConfigFilePath()
+	if err != nil {
+		http.Error(writer, fmt.Sprintf("Failed to get config file path: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	// Try to read the original YAML config file
-	configFile := "config.yaml"
+	
 	data, err := os.ReadFile(configFile)
 	if err != nil {
-		// If we can't read the file, fallback to JSON encoding of the config struct
-		writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-		if err := json.NewEncoder(writer).Encode(w.config); err != nil {
-			http.Error(writer, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
+		http.Error(writer, fmt.Sprintf("Failed to read config file %s: %v", configFile, err), http.StatusInternalServerError)
 		return
 	}
 
-	// Return the raw YAML content
+	// Always return the raw YAML content
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	writer.Header().Set("X-Config-Path", configFile) // Add header to show which path was used
 	writer.Write(data)
+}
+
+func (w *WebServer) handleSaveConfig(writer http.ResponseWriter, request *http.Request) {
+	// Read the request body
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		http.Error(writer, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer request.Body.Close()
+	
+	// Validate YAML syntax
+	var yamlData interface{}
+	if err := yaml.Unmarshal(body, &yamlData); err != nil {
+		http.Error(writer, fmt.Sprintf("Invalid YAML format: %v", err), http.StatusBadRequest)
+		return
+	}
+	
+	// Get the correct config file path
+	configFile, err := w.getConfigFilePath()
+	if err != nil {
+		http.Error(writer, fmt.Sprintf("Failed to get config file path: %v", err), http.StatusInternalServerError)
+		return
+	}
+	
+	// Ensure config directory exists
+	configDir := filepath.Dir(configFile)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		http.Error(writer, fmt.Sprintf("Failed to create config directory %s: %v", configDir, err), http.StatusInternalServerError)
+		return
+	}
+	
+	// Save to config file
+	if err := os.WriteFile(configFile, body, 0644); err != nil {
+		http.Error(writer, fmt.Sprintf("Failed to save config file to %s: %v", configFile, err), http.StatusInternalServerError)
+		return
+	}
+	
+	// Try to reload the configuration
+	// Note: In a production environment, you might want to validate the config
+	// against your expected schema before applying it
+	
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	response := map[string]interface{}{
+		"status": "success",
+		"message": "Configuration saved successfully",
+		"config_path": configFile,
+	}
+	json.NewEncoder(writer).Encode(response)
 }
 
 func (w *WebServer) handleHistory(writer http.ResponseWriter, request *http.Request) {

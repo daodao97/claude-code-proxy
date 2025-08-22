@@ -191,19 +191,6 @@ func onReady() {
 		},
 	})
 
-	// 编辑配置文件
-	addMenu(&Menu{
-		Title: "编辑配置",
-		OnClick: func(m *systray.MenuItem) {
-			err := open.RunWith(confFile, "Visual Studio Code")
-			if err != nil {
-				if err := open.Run(confDir); err != nil {
-					showNotification("打开失败", "无法打开配置目录")
-				}
-			}
-		},
-	})
-
 	systray.AddSeparator()
 
 	// 开机自启动
